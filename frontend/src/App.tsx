@@ -80,6 +80,9 @@ function App() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [issues, setIssues] = useState<OpenIssue[]>([]);
   const [history, setHistory] = useState<CampaignEvent[]>([]);
+  const [isCampaignsLoading, setIsCampaignsLoading] = useState(false);
+  const [isSelectedLoading, setIsSelectedLoading] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [selectedCampaignDetails, setSelectedCampaignDetails] = useState<Campaign | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -93,13 +96,22 @@ function App() {
   }, [selectedCampaignId]);
 
   async function refreshCampaigns(nextSelectedId?: string | null) {
-    const data = await listCampaigns();
-    setCampaigns(data);
+    const startedAt = Date.now();
+    setIsCampaignsLoading(true);
+    try {
+      const data = await listCampaigns();
+      setCampaigns(data);
 
-    const candidateId =
-      nextSelectedId ?? selectedCampaignId ?? (data.length > 0 ? data[0].id : null);
-    const exists = data.some((campaign) => campaign.id === candidateId);
-    setSelectedCampaignId(exists ? candidateId : data[0]?.id ?? null);
+      const candidateId =
+        nextSelectedId ?? selectedCampaignId ?? (data.length > 0 ? data[0].id : null);
+      const exists = data.some((campaign) => campaign.id === candidateId);
+      setSelectedCampaignId(exists ? candidateId : data[0]?.id ?? null);
+    } finally {
+      const elapsed = Date.now() - startedAt;
+      const minMs = 300;
+      if (elapsed < minMs) await delay(minMs - elapsed);
+      setIsCampaignsLoading(false);
+    }
   }
 
   async function refreshHistory(campaignId: string | null) {
@@ -107,8 +119,7 @@ function App() {
       setHistory([]);
       return;
     }
-    const data = await getCampaignHistory(campaignId);
-    setHistory(data);
+
   }
 
   async function refreshSelectedCampaign(campaignId: string | null) {
@@ -116,34 +127,22 @@ function App() {
       setSelectedCampaignDetails(null);
       return;
     }
-    const campaign = await getCampaign(campaignId);
-    setSelectedCampaignDetails(campaign);
+    const startedAt = Date.now();
+    setIsSelectedLoading(true);
+    try {
+      const campaign = await getCampaign(campaignId);
+      setSelectedCampaignDetails(campaign);
+    } finally {
+      const elapsed = Date.now() - startedAt;
+      const minMs = 200;
+      if (elapsed < minMs) await delay(minMs - elapsed);
+      setIsSelectedLoading(false);
+    }
   }
 
   useEffect(() => {
     async function bootstrap() {
-      const urlCampaignId = getCampaignIdFromUrl();
 
-      const [campaignData, issueData] = await Promise.all([
-        listCampaigns(),
-        listOpenIssues(),
-      ]);
-
-      setCampaigns(campaignData);
-      setIssues(issueData);
-
-      if (urlCampaignId) {
-        const exists = campaignData.some((c) => c.id === urlCampaignId);
-        if (exists) {
-          setSelectedCampaignId(urlCampaignId);
-          setInvalidUrlCampaignId(null);
-        } else {
-          setInvalidUrlCampaignId(urlCampaignId);
-          const fallbackId = campaignData[0]?.id ?? null;
-          setSelectedCampaignId(fallbackId);
-        }
-      } else {
-        setSelectedCampaignId(campaignData[0]?.id ?? null);
       }
     }
 
@@ -378,6 +377,7 @@ function App() {
           actionError={actionError}
           actionMessage={actionMessage}
           isPledgePending={pendingPledgeCampaignId === selectedCampaignId}
+          isLoading={isSelectedLoading || initialLoad}
           onPledge={handlePledge}
           onClaim={handleClaim}
           onRefund={handleRefund}
@@ -386,13 +386,14 @@ function App() {
 
       <CampaignsTable
         campaigns={campaigns}
+  isLoading={isCampaignsLoading || initialLoad}
         selectedCampaignId={selectedCampaignId}
         onSelect={handleSelect}
       />
 
       <section className="secondary-grid">
-        <CampaignTimeline history={history} />
-        <IssueBacklog issues={issues} />
+  <CampaignTimeline history={history} isLoading={isSelectedLoading || initialLoad} />
+  <IssueBacklog issues={issues} isLoading={isSelectedLoading || initialLoad} />
       </section>
     </div>
   );
