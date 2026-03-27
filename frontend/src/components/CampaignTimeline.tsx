@@ -1,4 +1,6 @@
+import { History } from "lucide-react";
 import { CampaignEvent } from "../types/campaign";
+import { EmptyState } from "./EmptyState";
 
 interface CampaignTimelineProps {
   history: CampaignEvent[];
@@ -32,20 +34,7 @@ export function CampaignTimeline({ history, isLoading }: CampaignTimelineProps) 
         <p className="muted">Each action is stored locally so contributors can follow campaign activity.</p>
       </div>
 
-      {isLoading ? (
-        <div className="timeline">
-          {Array.from({ length: 4 }).map((_, idx) => (
-            <article key={idx} className="timeline-item">
-              <div className="timeline-dot" aria-hidden />
-              <div className="timeline-copy">
-                <div className="skeleton skeleton-line" style={{ width: 160 }} />
-                <div className="skeleton skeleton-line" style={{ width: 100, height: 12 }} />
-              </div>
-            </article>
-          ))}
-        </div>
-      ) : history.length === 0 ? (
-        <div className="empty-state">Select a campaign to see lifecycle events.</div>
+
       ) : (
         <div className="timeline">
           {history.map((event) => {

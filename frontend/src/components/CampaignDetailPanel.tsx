@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Campaign, ApiError } from "../types/campaign";
+
 import { ContributorSummary } from "./ContributorSummary";
 
 interface CampaignDetailPanelProps {
@@ -58,7 +58,13 @@ export function CampaignDetailPanel({
   }
 
   if (!campaign) {
-    return <section className="card empty-state">Pick a campaign from the board to manage it.</section>;
+    return (
+      <EmptyState
+        variant="card"
+        icon={MousePointer2}
+        message="Pick a campaign from the board to manage it."
+      />
+    );
   }
 
   const activeCampaign = campaign;

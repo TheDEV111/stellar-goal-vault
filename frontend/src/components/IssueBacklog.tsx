@@ -1,4 +1,6 @@
+import { ListTodo } from "lucide-react";
 import { OpenIssue } from "../types/campaign";
+import { EmptyState } from "./EmptyState";
 
 interface IssueBacklogProps {
   issues: OpenIssue[];
@@ -13,20 +15,7 @@ export function IssueBacklog({ issues, isLoading }: IssueBacklogProps) {
       </div>
 
       <div className="issue-list">
-        {isLoading ? (
-          Array.from({ length: 3 }).map((_, idx) => (
-            <article key={idx} className="issue-item">
-              <div className="issue-topline">
-                <div className="skeleton skeleton-line" style={{ width: 180 }} />
-                <div className="skeleton skeleton-line" style={{ width: 48, height: 20 }} />
-              </div>
-              <div className="skeleton skeleton-line" style={{ width: '100%', height: 36, marginTop: 8 }} />
-              <div className="chip-row" style={{ marginTop: 8 }}>
-                <div className="skeleton skeleton-line" style={{ width: 80, height: 28 }} />
-                <div className="skeleton skeleton-line" style={{ width: 80, height: 28 }} />
-              </div>
-            </article>
-          ))
+
         ) : (
           issues.map((issue) => (
             <article key={issue.id} className="issue-item">

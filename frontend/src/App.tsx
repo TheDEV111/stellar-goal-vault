@@ -325,25 +325,7 @@ function App() {
         </p>
       </header>
 
-      {/* Invalid shared-link banner */}
-      {invalidUrlCampaignId && (
-        <div className="invalid-campaign-banner" role="alert">
-          <strong>Campaign not found.</strong> The link you followed referenced
-          campaign&nbsp;<code>{invalidUrlCampaignId}</code>, which doesn't exist or
-          may have been removed.
-          {campaigns.length > 0 && " Showing the first available campaign instead."}
-          <button
-            className="btn-ghost invalid-campaign-dismiss"
-            type="button"
-            onClick={() => setInvalidUrlCampaignId(null)}
-            aria-label="Dismiss"
-          >
-            ✕
-          </button>
-        </div>
-      )}
 
-      <section className="metric-grid">
         <article className="metric-card">
           <span>Total campaigns</span>
           <strong>{metrics.total}</strong>
@@ -362,7 +344,7 @@ function App() {
         </article>
       </section>
 
-      <section className="layout-grid">
+      <section className="layout-grid animate-fade-in" style={{ animationDelay: "0.2s" }}>
         <CreateCampaignForm onCreate={handleCreate} apiError={createError} />
         <CampaignDetailPanel
           campaign={selectedCampaign}
@@ -376,16 +358,7 @@ function App() {
         />
       </section>
 
-      <CampaignsTable
-        campaigns={campaigns}
-  isLoading={isCampaignsLoading || initialLoad}
-        selectedCampaignId={selectedCampaignId}
-        onSelect={handleSelect}
-      />
 
-      <section className="secondary-grid">
-  <CampaignTimeline history={history} isLoading={isSelectedLoading || initialLoad} />
-  <IssueBacklog issues={issues} isLoading={isSelectedLoading || initialLoad} />
       </section>
     </div>
   );
