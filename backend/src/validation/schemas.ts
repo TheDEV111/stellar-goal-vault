@@ -23,12 +23,9 @@ export const assetCodeSchema = z
   .trim()
   .regex(ASSET_CODE_REGEX, "Asset code must be 1-12 alphanumeric characters.")
   .transform((value: string) => value.toUpperCase())
-  .refine(
-    (code: string) => config.allowedAssets.includes(code),
-    {
-      message: `Asset code is not supported. Supported assets: ${config.allowedAssets.join(", ")}`,
-    },
-  );
+  .refine((code: string) => config.allowedAssets.includes(code), {
+    message: `Asset code is not supported. Supported assets: ${config.allowedAssets.join(", ")}`,
+  });
 
 export const positiveAmountSchema = z.coerce
   .number()
@@ -62,8 +59,25 @@ export const claimCampaignPayloadSchema = z.object({
   creator: stellarAccountIdSchema,
 });
 
+const stellarTransactionHashSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Fa-f0-9]{64}$/, "txHash must be a 64-character hex string.");
+
+const sorobanRefundMetadataSchema = z.object({
+  txHash: stellarTransactionHashSchema,
+  contractId: z.string().trim().min(1, "contractId is required."),
+  networkPassphrase: z.string().trim().min(1, "networkPassphrase is required."),
+  rpcUrl: z.string().trim().url("rpcUrl must be a valid URL."),
+  walletAddress: stellarAccountIdSchema,
+  ledger: z.coerce.number().int().positive().optional(),
+  createdAt: unixTimestampSchema.optional(),
+  latestLedger: z.coerce.number().int().positive().optional(),
+});
+
 export const refundPayloadSchema = z.object({
   contributor: stellarAccountIdSchema,
+  soroban: sorobanRefundMetadataSchema,
 });
 
 export type ValidationIssue = {

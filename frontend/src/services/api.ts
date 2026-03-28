@@ -1,9 +1,11 @@
 import {
+  AppConfig,
   Campaign,
   CampaignEvent,
   CreateCampaignPayload,
   CreatePledgePayload,
   OpenIssue,
+  SorobanRefundMetadata,
 } from "../types/campaign";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
@@ -21,7 +23,6 @@ async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const errorMsg = body.error?.message ?? "Unexpected API error";
     const error = new Error(errorMsg);
-    // Attach extra metadata if available
     if (body.error) {
       (error as any).code = body.error.code;
       (error as any).details = body.error.details;
@@ -29,6 +30,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
     }
     throw error;
   }
+
   return body;
 }
 
@@ -80,11 +82,12 @@ export async function claimCampaign(campaignId: string, creator: string): Promis
 export async function refundCampaign(
   campaignId: string,
   contributor: string,
+  soroban: SorobanRefundMetadata,
 ): Promise<Campaign> {
   const response = await fetch(`${API_BASE}/campaigns/${campaignId}/refund`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contributor }),
+    body: JSON.stringify({ contributor, soroban }),
   });
   const body = await parseResponse<{ data: Campaign }>(response);
   return body.data;
@@ -99,5 +102,11 @@ export async function getCampaignHistory(campaignId: string): Promise<CampaignEv
 export async function listOpenIssues(): Promise<OpenIssue[]> {
   const response = await fetch(`${API_BASE}/open-issues`);
   const body = await parseResponse<{ data: OpenIssue[] }>(response);
+  return body.data;
+}
+
+export async function getAppConfig(): Promise<AppConfig> {
+  const response = await fetch(`${API_BASE}/config`);
+  const body = await parseResponse<{ data: AppConfig }>(response);
   return body.data;
 }

@@ -1,8 +1,9 @@
 import cors from "cors";
 import "dotenv/config";
 import express, { Request, Response } from "express";
-import { config } from "./config";
+import { randomUUID } from "crypto";
 import { z } from "zod";
+import { config } from "./config";
 import {
   addPledge,
   calculateProgress,
@@ -15,9 +16,11 @@ import {
   listCampaigns,
   refundContributor,
 } from "./services/campaignStore";
-import { startEventIndexer } from "./services/eventIndexer";
 import { getCampaignHistory } from "./services/eventHistory";
+import { startEventIndexer } from "./services/eventIndexer";
 import { fetchOpenIssues } from "./services/openIssues";
+import { ensureSorobanRefundConfig, verifyRefundTransaction } from "./services/sorobanRpc";
+import { AppError, ApiErrorResponse } from "./types/errors";
 import {
   campaignIdSchema,
   claimCampaignPayloadSchema,
@@ -27,8 +30,6 @@ import {
   zodIssuesToErrorMessage,
   zodIssuesToValidationIssues,
 } from "./validation/schemas";
-import { AppError, ApiErrorResponse } from "./types/errors";
-import { randomUUID } from "crypto";
 
 export const app = express();
 const port = Number(process.env.PORT ?? 3001);
@@ -38,18 +39,16 @@ type CampaignListItem = ReturnType<typeof calculateProgress> extends infer Progr
   ? ReturnType<typeof listCampaigns>[number] & { progress: Progress }
   : never;
 
-// Initialize DB
 initCampaignStore();
 
 app.use(
   cors({
     origin: config.corsAllowedOrigins,
     credentials: true,
-  })
+  }),
 );
 app.use(express.json());
 
-// Request ID middleware
 app.use((req: Request & { requestId?: string }, _res: Response, next: express.NextFunction) => {
   req.requestId = randomUUID();
   next();
@@ -154,7 +153,18 @@ app.get("/api/health", (_req: Request, res: Response) => {
 });
 
 app.get("/api/campaigns", (req: Request, res: Response) => {
-
+  const searchQuery = normalizeQueryValue(req.query.q);
+  const filters = parseCampaignListFilters({
+    asset: req.query.asset,
+    status: req.query.status,
+  });
+  const data = filterCampaignList(
+    listCampaigns({ searchQuery }).map((campaign) => ({
+      ...campaign,
+      progress: calculateProgress(campaign),
+    })),
+    filters,
+  );
 
   res.json({ data });
 });
@@ -223,7 +233,7 @@ app.post("/api/campaigns/:id/claim", (req: Request, res: Response) => {
   res.json({ data: { ...campaign, progress: calculateProgress(campaign) } });
 });
 
-app.post("/api/campaigns/:id/refund", (req: Request, res: Response) => {
+app.post("/api/campaigns/:id/refund", async (req: Request, res: Response) => {
   const parsedId = parseCampaignId(req.params.id);
   if (!parsedId.ok) {
     sendValidationError(parsedId.issues);
@@ -236,7 +246,22 @@ app.post("/api/campaigns/:id/refund", (req: Request, res: Response) => {
     return;
   }
 
-  const result = refundContributor(parsedId.value, parsedBody.data.contributor);
+  ensureSorobanRefundConfig();
+  const verified = await verifyRefundTransaction(parsedBody.data.soroban.txHash);
+
+  const result = refundContributor(
+    parsedId.value,
+    parsedBody.data.contributor,
+    {
+      ...parsedBody.data.soroban,
+      txHash: verified.txHash,
+      ledger: verified.ledger ?? parsedBody.data.soroban.ledger,
+      createdAt: verified.createdAt ?? parsedBody.data.soroban.createdAt,
+      latestLedger: verified.latestLedger ?? parsedBody.data.soroban.latestLedger,
+      source: "soroban-contract",
+    },
+  );
+
   res.json({
     data: {
       ...result.campaign,
@@ -269,11 +294,17 @@ app.get("/api/open-issues", async (_req: Request, res: Response) => {
 app.get("/api/config", (_req: Request, res: Response) => {
   res.json({
     data: {
+      allowedAssets: config.allowedAssets,
+      soroban: {
+        enabled: Boolean(config.contractId),
+        contractId: config.contractId || undefined,
+        networkPassphrase: config.sorobanNetworkPassphrase,
+        rpcUrl: config.sorobanRpcUrl,
+      },
     },
   });
 });
 
-// Global Error Handler
 app.use((err: any, req: Request, res: Response, _next: express.NextFunction) => {
   const statusCode = err instanceof AppError ? err.statusCode : (err.statusCode ?? 500);
   const code = err instanceof AppError ? err.code : (err.code ?? "INTERNAL_SERVER_ERROR");

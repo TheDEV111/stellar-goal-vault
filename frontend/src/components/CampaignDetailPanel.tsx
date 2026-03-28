@@ -1,10 +1,13 @@
 import { FormEvent, useEffect, useState } from "react";
-
+import { MousePointer2 } from "lucide-react";
+import { ApiError, Campaign } from "../types/campaign";
 import { ContributorSummary } from "./ContributorSummary";
+import { EmptyState } from "./EmptyState";
 
 interface CampaignDetailPanelProps {
   campaign: Campaign | null;
-
+  isLoading?: boolean;
+  actionError?: ApiError | string | null;
   actionMessage?: string | null;
   isPledgePending?: boolean;
   onPledge: (campaignId: string, contributor: string, amount: number) => Promise<void>;
@@ -68,6 +71,8 @@ export function CampaignDetailPanel({
   }
 
   const activeCampaign = campaign;
+  const normalizedActionError =
+    typeof actionError === "string" ? ({ message: actionError } as ApiError) : actionError;
 
   async function handlePledge(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -124,7 +129,11 @@ export function CampaignDetailPanel({
         </article>
       </div>
 
-  <ContributorSummary pledges={activeCampaign.pledges} assetCode={activeCampaign.assetCode} isLoading={isLoading} />
+      <ContributorSummary
+        pledges={activeCampaign.pledges}
+        assetCode={activeCampaign.assetCode}
+        isLoading={isLoading}
+      />
 
       <form className="form-grid" onSubmit={handlePledge}>
         <label className="field-group">
@@ -169,7 +178,11 @@ export function CampaignDetailPanel({
           <button
             className="btn-ghost"
             type="button"
-            disabled={isSubmitting || !activeCampaign.progress.canRefund || contributor.trim().length === 0}
+            disabled={
+              isSubmitting ||
+              !activeCampaign.progress.canRefund ||
+              contributor.trim().length === 0
+            }
             onClick={handleRefund}
           >
             Refund contributor
@@ -180,13 +193,13 @@ export function CampaignDetailPanel({
       {isPledgePending ? (
         <p className="pending-note">Pledge is pending confirmation and will reconcile automatically.</p>
       ) : null}
-      {actionError ? (
+      {normalizedActionError ? (
         <div className="form-error">
-          <p>{actionError.message}</p>
-          {actionError.code && (
+          <p>{normalizedActionError.message}</p>
+          {normalizedActionError.code && (
             <small className="error-meta">
-              Code: {actionError.code}
-              {actionError.requestId && ` | Request ID: ${actionError.requestId}`}
+              Code: {normalizedActionError.code}
+              {normalizedActionError.requestId && ` | Request ID: ${normalizedActionError.requestId}`}
             </small>
           )}
         </div>

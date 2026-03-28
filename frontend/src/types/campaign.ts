@@ -49,6 +49,32 @@ export interface CampaignEvent {
   metadata?: Record<string, unknown>;
 }
 
+export interface SorobanRefundMetadata {
+  txHash: string;
+  contractId: string;
+  networkPassphrase: string;
+  rpcUrl: string;
+  walletAddress: string;
+  ledger?: number;
+  createdAt?: number;
+  latestLedger?: number;
+}
+
+export interface RefundReconciliationPayload {
+  contributor: string;
+  soroban: SorobanRefundMetadata;
+}
+
+export interface AppConfig {
+  allowedAssets: string[];
+  soroban: {
+    enabled: boolean;
+    contractId?: string;
+    networkPassphrase: string;
+    rpcUrl: string;
+  };
+}
+
 export interface CreateCampaignPayload {
   creator: string;
   title: string;

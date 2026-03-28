@@ -1,4 +1,5 @@
 import { FormEvent, useState, useEffect } from "react";
+import { getAppConfig } from "../services/api";
 import { CreateCampaignPayload, ApiError } from "../types/campaign";
 
 interface CreateCampaignFormProps {
@@ -26,14 +27,11 @@ export function CreateCampaignForm({
   const [allowedAssets, setAllowedAssets] = useState<string[]>([]);
 
   useEffect(() => {
-    fetch("http://localhost:3001/api/config")
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.data?.allowedAssets) {
-          setAllowedAssets(json.data.allowedAssets);
-          if (json.data.allowedAssets.length > 0) {
-            update("assetCode", json.data.allowedAssets[0]);
-          }
+    getAppConfig()
+      .then((appConfig) => {
+        if (appConfig.allowedAssets.length > 0) {
+          setAllowedAssets(appConfig.allowedAssets);
+          update("assetCode", appConfig.allowedAssets[0]);
         }
       })
       .catch(console.error);
