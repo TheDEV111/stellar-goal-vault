@@ -351,7 +351,6 @@ function App() {
         </p>
       </header>
 
-      {/* FIX: opening <section> tag was missing for the metrics grid */}
       <section className="metrics-grid animate-fade-in">
         <article className="metric-card">
           <span>Total campaigns</span>

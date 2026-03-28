@@ -7,7 +7,7 @@ interface IssueBacklogProps {
   isLoading?: boolean;
 }
 
-export function IssueBacklog({ issues }: IssueBacklogProps) {
+export function IssueBacklog({ issues, isLoading }: IssueBacklogProps) {
   if (issues.length === 0) {
     return (
       <EmptyState
@@ -29,23 +29,37 @@ export function IssueBacklog({ issues }: IssueBacklogProps) {
       </div>
 
       <div className="issue-list">
-        {issues.map((issue: OpenIssue) => (
-          <article key={issue.id} className="issue-item">
-            <div className="issue-topline">
-              <strong>{issue.title}</strong>
-              <span className="badge badge-neutral">{issue.points} pts</span>
-            </div>
-            <p>{issue.summary}</p>
-            <div className="chip-row">
-              {issue.labels.map((label: string) => (
-                <span key={label} className="chip">
-                  {label}
-                </span>
-              ))}
-              <span className="chip-emphasis">{issue.complexity}</span>
-            </div>
-          </article>
-        ))}
+        {isLoading ? (
+          <EmptyState
+            icon={ListTodo}
+            title="Loading issues..."
+            message="Fetching contribution backlog"
+          />
+        ) : issues.length === 0 ? (
+          <EmptyState
+            icon={ListTodo}
+            title="No issues yet"
+            message="Issue backlog will appear here"
+          />
+        ) : (
+          issues.map((issue) => (
+            <article key={issue.id} className="issue-item">
+              <div className="issue-topline">
+                <strong>{issue.title}</strong>
+                <span className="badge badge-neutral">{issue.points} pts</span>
+              </div>
+              <p>{issue.summary}</p>
+              <div className="chip-row">
+                {issue.labels.map((label) => (
+                  <span key={label} className="chip">
+                    {label}
+                  </span>
+                ))}
+                <span className="chip-emphasis">{issue.complexity}</span>
+              </div>
+            </article>
+          ))
+        )}
       </div>
     </section>
   );

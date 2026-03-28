@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { LayoutGrid } from "lucide-react";
 import { Campaign } from "../types/campaign";
 import { EmptyState } from "./EmptyState";
+import { AssetFilterDropdown } from "./AssetFilterDropdown";
 
 interface CampaignsTableProps {
   campaigns: Campaign[];
@@ -46,9 +47,19 @@ export function CampaignsTable({
   onSelect,
   invalidUrlCampaignId,
 }: CampaignsTableProps) {
-  const [selectedAssetCode, setSelectedAssetCode] = useState("");
+  const [selectedAssetCode, setSelectedAssetCode] = useState<string>("");
 
   const isEmpty = campaigns.length === 0;
+
+  const distinctAssetCodes = useMemo(() => {
+    const codes = new Set(campaigns.map((c) => c.assetCode));
+    return Array.from(codes).sort();
+  }, [campaigns]);
+
+  const filteredCampaigns = useMemo(() => {
+    if (!selectedAssetCode || selectedAssetCode === "") return campaigns;
+    return campaigns.filter((c) => c.assetCode === selectedAssetCode);
+  }, [campaigns, selectedAssetCode]);
 
   const distinctAssetCodes = useMemo(
     () => [...new Set(campaigns.map((c) => c.assetCode))].sort(),

@@ -6,6 +6,7 @@ import { z } from "zod";
 import {
   addPledge,
   calculateProgress,
+  CampaignRecord,
   CampaignStatus,
   claimCampaign,
   createCampaign,
@@ -23,12 +24,14 @@ import {
   claimCampaignPayloadSchema,
   createCampaignPayloadSchema,
   createPledgePayloadSchema,
+  paginationSchema,
   refundPayloadSchema,
   zodIssuesToErrorMessage,
   zodIssuesToValidationIssues,
 } from "./validation/schemas";
 import { AppError, ApiErrorResponse } from "./types/errors";
 import { randomUUID } from "crypto";
+import { checkDbHealth } from "./services/db";
 
 export const app = express();
 const port = Number(process.env.PORT ?? 3001);
@@ -43,6 +46,7 @@ type CampaignListItem =
   ReturnType<typeof calculateProgress> extends infer Progress
   ? ReturnType<typeof listCampaigns>[number] & { progress: Progress }
   : never;
+
 
 // Initialize DB
 initCampaignStore();
@@ -134,15 +138,19 @@ export function normalizeStatusFilter(
 export function parseCampaignListFilters(query: {
   asset?: unknown;
   status?: unknown;
+  q?: unknown;
 }): {
   asset?: string;
   status?: CampaignStatus;
+  searchQuery?: string;
 } {
   return {
     asset: normalizeAssetFilter(query.asset),
     status: normalizeStatusFilter(query.status),
+    searchQuery: normalizeQueryValue(query.q),
   };
 }
+
 
 export function filterCampaignList(
   campaigns: CampaignListItem[],
@@ -162,10 +170,15 @@ export function filterCampaignList(
 }
 
 app.get("/api/health", (_req: Request, res: Response) => {
-  res.json({
+  const database = checkDbHealth();
+  const healthy = database.reachable;
+
+  res.status(healthy ? 200 : 503).json({
     service: "stellar-goal-vault-backend",
-    status: "ok",
+    status: healthy ? "ok" : "degraded",
     timestamp: new Date().toISOString(),
+    uptimeSeconds: Number(process.uptime().toFixed(3)),
+    database,
   });
 });
 
@@ -211,8 +224,29 @@ app.get("/api/campaigns", (req: Request, res: Response) => {
     data = data.filter((c) => c.progress.status === status);
   }
 
-  res.json({ data });
+  const { campaigns, totalCount } = listCampaigns({
+    ...filters,
+    assetCode: filters.asset,
+    page,
+    limit,
+  });
+
+  const data: CampaignListItem[] = campaigns.map((campaign) => ({
+    ...campaign,
+    progress: calculateProgress(campaign),
+  }));
+
+  res.json({
+    data,
+    pagination: {
+      totalCount,
+      page,
+      limit,
+      totalPages: Math.ceil(totalCount / limit),
+    },
+  });
 });
+
 
 app.get("/api/campaigns/:id", (req: Request, res: Response) => {
   const parsedId = parseCampaignId(req.params.id);

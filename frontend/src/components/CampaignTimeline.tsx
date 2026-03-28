@@ -26,7 +26,7 @@ function describeEvent(event: CampaignEvent): string {
   }
 }
 
-export function CampaignTimeline({ history }: CampaignTimelineProps) {
+export function CampaignTimeline({ history, isLoading }: CampaignTimelineProps) {
   if (history.length === 0) {
     return (
       <EmptyState
@@ -47,34 +47,41 @@ export function CampaignTimeline({ history }: CampaignTimelineProps) {
         </p>
       </div>
 
-      <div className="timeline">
-        {history.map((event: CampaignEvent) => {
-          const isPending = event.metadata?.pending === true;
-          return (
-            <article
-              key={event.id}
-              className={`timeline-item ${isPending ? "pending" : ""}`}
-            >
-              <div className="timeline-dot" aria-hidden />
-              <div className="timeline-copy">
-                <strong>
-                  {describeEvent(event)}
-                  {isPending ? " (pending...)" : ""}
-                </strong>
-                <span className="muted">{formatTimestamp(event.timestamp)}</span>
-                <span className="muted">
-                  {event.actor
-                    ? `Actor: ${event.actor.slice(0, 10)}...`
-                    : "System event"}
-                  {typeof event.amount === "number"
-                    ? ` | Amount: ${event.amount}`
-                    : ""}
-                </span>
-              </div>
-            </article>
-          );
-        })}
-      </div>
+      {isLoading ? (
+        <EmptyState
+          icon={History}
+          title="Loading timeline..."
+          message="Fetching campaign events"
+        />
+      ) : history.length === 0 ? (
+        <EmptyState
+          icon={History}
+          title="No events yet"
+          message="Campaign timeline will appear here"
+        />
+      ) : (
+        <div className="timeline">
+          {history.map((event) => {
+            const isPending = event.metadata?.pending === true;
+            return (
+              <article key={event.id} className={`timeline-item ${isPending ? "pending" : ""}`}>
+                <div className="timeline-dot" aria-hidden />
+                <div className="timeline-copy">
+                  <strong>
+                    {describeEvent(event)}
+                    {isPending ? " (pending...)" : ""}
+                  </strong>
+                  <span className="muted">{formatTimestamp(event.timestamp)}</span>
+                  <span className="muted">
+                    {event.actor ? `Actor: ${event.actor.slice(0, 10)}...` : "System event"}
+                    {typeof event.amount === "number" ? ` | Amount: ${event.amount}` : ""}
+                  </span>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
