@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { MousePointer2, Wallet } from "lucide-react";
+import { CopyButton } from "./CopyButton";
 import { AppConfig, ApiError, Campaign } from "../types/campaign";
 import { ContributorSummary } from "./ContributorSummary";
 import { EmptyState } from "./EmptyState";
@@ -137,9 +138,15 @@ export function CampaignDetailPanel({
       <div className="detail-grid">
         <article className="detail-stat">
           <span>Creator</span>
-          <strong className="mono">
-            {activeCampaign.creator.slice(0, 16)}...
-          </strong>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <strong className="mono">
+              {activeCampaign.creator.slice(0, 16)}...
+            </strong>
+            <CopyButton
+              value={activeCampaign.creator}
+              ariaLabel="Copy creator address"
+            />
+          </div>
         </article>
         <article className="detail-stat">
           <span>Asset</span>
@@ -166,7 +173,13 @@ export function CampaignDetailPanel({
         {connectedWallet ? (
           <div className="wallet-connected">
             <span className="badge badge-funded">Connected</span>
-            <span className="mono">{connectedWallet}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="mono">{connectedWallet}</span>
+              <CopyButton
+                value={connectedWallet}
+                ariaLabel="Copy connected wallet address"
+              />
+            </div>
           </div>
         ) : (
           <button
