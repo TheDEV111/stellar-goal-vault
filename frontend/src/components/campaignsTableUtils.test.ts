@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { searchCampaigns } from "./campaignsTableUtils";
+import { searchCampaigns, sortCampaigns } from "./campaignsTableUtils";
 import type { Campaign } from "../types/campaign";
+import type { SortOption } from "./SortDropdown";
 
 // Mock campaign data
 const mockCampaigns: Campaign[] = [
@@ -207,6 +208,183 @@ describe("searchCampaigns", () => {
     it("should handle empty campaign array with empty query", () => {
       const results = searchCampaigns([], "");
       expect(results).toHaveLength(0);
+    });
+  });
+});
+
+describe("sortCampaigns", () => {
+  const mockCampaigns: Campaign[] = [
+    {
+      id: "1",
+      creator: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      title: "Campaign A",
+      description: "First campaign",
+      assetCode: "USDC",
+      targetAmount: 10000,
+      pledgedAmount: 5000,
+      deadline: 1710086400,
+      createdAt: 1710000000,
+      progress: {
+        status: "open",
+        percentFunded: 50,
+        remainingAmount: 5000,
+        pledgeCount: 3,
+        hoursLeft: 24,
+        canPledge: true,
+        canClaim: false,
+        canRefund: false,
+      },
+    },
+    {
+      id: "2",
+      creator: "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      title: "Campaign B",
+      description: "Second campaign",
+      assetCode: "XLM",
+      targetAmount: 5000,
+      pledgedAmount: 2500,
+      deadline: 1710172800,
+      createdAt: 1710000100,
+      progress: {
+        status: "open",
+        percentFunded: 50,
+        remainingAmount: 2500,
+        pledgeCount: 5,
+        hoursLeft: 48,
+        canPledge: true,
+        canClaim: false,
+        canRefund: false,
+      },
+    },
+    {
+      id: "3",
+      creator: "GCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+      title: "Campaign C",
+      description: "Third campaign",
+      assetCode: "USDC",
+      targetAmount: 20000,
+      pledgedAmount: 15000,
+      deadline: 1710259200,
+      createdAt: 1710000200,
+      progress: {
+        status: "funded",
+        percentFunded: 75,
+        remainingAmount: 5000,
+        pledgeCount: 10,
+        hoursLeft: 72,
+        canPledge: false,
+        canClaim: true,
+        canRefund: false,
+      },
+    },
+  ];
+
+  describe("Sort by newest", () => {
+    it("should sort campaigns by createdAt descending (newest first)", () => {
+      const sorted = sortCampaigns(mockCampaigns, "newest");
+      expect(sorted[0].id).toBe("3"); // createdAt: 1710000200
+      expect(sorted[1].id).toBe("2"); // createdAt: 1710000100
+      expect(sorted[2].id).toBe("1"); // createdAt: 1710000000
+    });
+
+    it("should not mutate the original array", () => {
+      const original = [...mockCampaigns];
+      sortCampaigns(mockCampaigns, "newest");
+      expect(mockCampaigns).toEqual(original);
+    });
+  });
+
+  describe("Sort by deadline", () => {
+    it("should sort campaigns by deadline ascending (nearest deadline first)", () => {
+      const sorted = sortCampaigns(mockCampaigns, "deadline");
+      expect(sorted[0].id).toBe("1"); // deadline: 1710086400
+      expect(sorted[1].id).toBe("2"); // deadline: 1710172800
+      expect(sorted[2].id).toBe("3"); // deadline: 1710259200
+    });
+  });
+
+  describe("Sort by percentFunded", () => {
+    it("should sort campaigns by percentFunded descending (highest first)", () => {
+      const sorted = sortCampaigns(mockCampaigns, "percentFunded");
+      expect(sorted[0].id).toBe("3"); // percentFunded: 75
+      expect(sorted[1].id).toBe("1"); // percentFunded: 50
+      expect(sorted[2].id).toBe("2"); // percentFunded: 50
+    });
+
+    it("should maintain stable sort for equal percentFunded values", () => {
+      const sorted = sortCampaigns(mockCampaigns, "percentFunded");
+      // Campaigns 1 and 2 both have 50% funded
+      // They should maintain their original relative order
+      const campaign1Index = sorted.findIndex((c) => c.id === "1");
+      const campaign2Index = sorted.findIndex((c) => c.id === "2");
+      expect(campaign1Index).toBeLessThan(campaign2Index);
+    });
+  });
+
+  describe("Sort by totalPledged", () => {
+    it("should sort campaigns by pledgedAmount descending (largest first)", () => {
+      const sorted = sortCampaigns(mockCampaigns, "totalPledged");
+      expect(sorted[0].id).toBe("3"); // pledgedAmount: 15000
+      expect(sorted[1].id).toBe("1"); // pledgedAmount: 5000
+      expect(sorted[2].id).toBe("2"); // pledgedAmount: 2500
+    });
+  });
+
+  describe("Edge cases", () => {
+    it("should handle empty campaign array", () => {
+      const sorted = sortCampaigns([], "newest");
+      expect(sorted).toHaveLength(0);
+    });
+
+    it("should handle single campaign", () => {
+      const singleCampaign = [mockCampaigns[0]];
+      const sorted = sortCampaigns(singleCampaign, "newest");
+      expect(sorted).toHaveLength(1);
+      expect(sorted[0].id).toBe("1");
+    });
+
+    it("should return a new array instance", () => {
+      const sorted = sortCampaigns(mockCampaigns, "newest");
+      expect(sorted).not.toBe(mockCampaigns);
+    });
+
+    it("should preserve all campaign properties", () => {
+      const sorted = sortCampaigns(mockCampaigns, "newest");
+      sorted.forEach((campaign) => {
+        const original = mockCampaigns.find((c) => c.id === campaign.id);
+        expect(campaign).toEqual(original);
+      });
+    });
+  });
+
+  describe("Stability", () => {
+    it("should maintain stable sort order for campaigns with equal sort values", () => {
+      // Create campaigns with same createdAt
+      const equalCreatedAt: Campaign[] = [
+        { ...mockCampaigns[0], id: "A", createdAt: 1000 },
+        { ...mockCampaigns[1], id: "B", createdAt: 1000 },
+        { ...mockCampaigns[2], id: "C", createdAt: 1000 },
+      ];
+
+      const sorted = sortCampaigns(equalCreatedAt, "newest");
+      // All have same createdAt, so order should be preserved
+      expect(sorted[0].id).toBe("A");
+      expect(sorted[1].id).toBe("B");
+      expect(sorted[2].id).toBe("C");
+    });
+
+    it("should maintain stable sort order for campaigns with equal deadlines", () => {
+      const equalDeadline: Campaign[] = [
+        { ...mockCampaigns[0], id: "A", deadline: 1000 },
+        { ...mockCampaigns[1], id: "B", deadline: 1000 },
+        { ...mockCampaigns[2], id: "C", deadline: 1000 },
+      ];
+
+      const sorted = sortCampaigns(equalDeadline, "deadline");
+      // All have same deadline, so order should be preserved
+      expect(sorted[0].id).toBe("A");
+      expect(sorted[1].id).toBe("B");
+      expect(sorted[2].id).toBe("C");
     });
   });
 });

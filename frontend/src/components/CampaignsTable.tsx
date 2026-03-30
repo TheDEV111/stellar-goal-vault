@@ -3,7 +3,9 @@ import { useMemo, useState } from "react";
 import { Campaign } from "../types/campaign";
 import { EmptyState } from "./EmptyState";
 import { AssetFilterDropdown } from "./AssetFilterDropdown";
-import { applyFilters, getDistinctAssetCodes } from "./campaignsTableUtils";
+import { SortDropdown, SortOption } from "./SortDropdown";
+import { SearchInput } from "./SearchInput";
+import { applyFilters, getDistinctAssetCodes, sortCampaigns } from "./campaignsTableUtils";
 import { useDebounce } from "../hooks/useDebounce";
 
 interface CampaignsTableProps {
@@ -28,10 +30,17 @@ export function CampaignsTable({
   isLoading = false,
 }: CampaignsTableProps) {
   const [selectedAssetCode, setSelectedAssetCode] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [sortBy, setSortBy] = useState<SortOption>("newest");
+  const debouncedSearchQuery = useDebounce(searchInput, 300);
   const distinctAssetCodes = useMemo(() => getDistinctAssetCodes(campaigns), [campaigns]);
   const filteredCampaigns = useMemo(
     () => applyFilters(campaigns, selectedAssetCode, "", debouncedSearchQuery),
     [campaigns, selectedAssetCode, debouncedSearchQuery],
+  );
+  const sortedCampaigns = useMemo(
+    () => sortCampaigns(filteredCampaigns, sortBy),
+    [filteredCampaigns, sortBy],
   );
   const isEmpty = campaigns.length === 0;
 
@@ -86,9 +95,14 @@ export function CampaignsTable({
           onChange={setSelectedAssetCode}
           disabled={false}
         />
+        <SortDropdown
+          value={sortBy}
+          onChange={setSortBy}
+          disabled={campaigns.length === 0}
+        />
       </div>
 
-      {filteredCampaigns.length === 0 ? (
+      {sortedCampaigns.length === 0 ? (
         <p className="muted">No campaigns match the current filters.</p>
       ) : (
         <div className="table-wrap">
@@ -104,7 +118,7 @@ export function CampaignsTable({
               </tr>
             </thead>
             <tbody>
-              {filteredCampaigns.map((campaign) => (
+              {sortedCampaigns.map((campaign) => (
                 <tr key={campaign.id}>
                   <td>
                     <div className="stacked">
