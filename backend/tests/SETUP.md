@@ -304,7 +304,7 @@ NODE_ENV=test                    # Optional
 ### Optional
 
 ```bash
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 SOROBAN_RPC_URL=https://soroban-testnet.stellar.org:443
 NETWORK_PASSPHRASE=Test SDF Network ; September 2015
 CONTRACT_AMOUNT_DECIMALS=2

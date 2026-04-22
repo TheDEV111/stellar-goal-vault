@@ -24,9 +24,7 @@ export const config = {
     .split(",")
     .map((value) => value.trim().toUpperCase())
     .filter(Boolean),
-  corsAllowedOrigins: parseOrigins(
-    process.env.CORS_ALLOWED_ORIGINS ?? "http://localhost:5173",
-  ),
+  corsAllowedOrigins: parseOrigins(process.env.ALLOWED_ORIGINS ?? ""),
   sorobanRpcUrl: process.env.SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org:443",
   contractId: process.env.CONTRACT_ID ?? "",
   sorobanNetworkPassphrase:
