@@ -41,19 +41,21 @@ export const app = express();
 const CAMPAIGN_STATUSES: CampaignStatus[] = ["open", "funded", "claimed", "failed"];
 const CONTRACT_AMOUNT_DECIMALS = Number(process.env.CONTRACT_AMOUNT_DECIMALS ?? 2);
 
-type RequestWithId = Request & { requestId?: string };
-type CampaignListItem = ReturnType<typeof listCampaigns>["campaigns"][number] & {
-  progress: ReturnType<typeof calculateProgress>;
-};
-
-initCampaignStore();
 
 app.use(
   cors({
-    origin: config.corsAllowedOrigins,
+    origin: (origin, callback) => {
+      const isDev = process.env.NODE_ENV !== "production";
+      if (!origin || config.corsAllowedOrigins.includes(origin) || (isDev && config.corsAllowedOrigins.length === 0)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
   }),
 );
+
 app.use(express.json());
 
 app.use((req: RequestWithId, res: Response, next: express.NextFunction) => {
@@ -378,6 +380,17 @@ app.get("/api/config", (_req: Request, res: Response) => {
 });
 
 app.use((err: any, req: Request, res: Response, _next: express.NextFunction) => {
+  if (err.message === "Not allowed by CORS") {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: "FORBIDDEN",
+        message: "CORS policy violation",
+        requestId: (req as any).requestId,
+      },
+    });
+  }
+
   const statusCode = err instanceof AppError ? err.statusCode : (err.statusCode ?? 500);
   const code = err instanceof AppError ? err.code : (err.code ?? "INTERNAL_SERVER_ERROR");
   const response: ApiErrorResponse = {
