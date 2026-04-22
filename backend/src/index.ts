@@ -3,11 +3,10 @@ import "dotenv/config";
 import express, { Request, Response } from "express";
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { config } from "./config";
+import { config, walletIntegrationReady } from "./config";
 import {
   addPledge,
   calculateProgress,
-  CampaignRecord,
   CampaignStatus,
   claimCampaign,
   createCampaign,
@@ -18,6 +17,7 @@ import {
   reconcileOnChainPledge,
   refundContributor,
 } from "./services/campaignStore";
+import { checkDbHealth } from "./services/db";
 import { getCampaignHistory } from "./services/eventHistory";
 import { startEventIndexer } from "./services/eventIndexer";
 import { fetchOpenIssues } from "./services/openIssues";
@@ -34,20 +34,13 @@ import {
   zodIssuesToErrorMessage,
   zodIssuesToValidationIssues,
 } from "./validation/schemas";
+import { logError, logInfo, logRequest } from "./logger";
 
 export const app = express();
-const port = Number(process.env.PORT ?? 3001);
-const CAMPAIGN_STATUSES: CampaignStatus[] = [
-  "open",
-  "funded",
-  "claimed",
-  "failed",
-];
 
-type CampaignListItem =
-  ReturnType<typeof calculateProgress> extends infer Progress
-  ? ReturnType<typeof listCampaigns>[number] & { progress: Progress }
-  : never;
+const CAMPAIGN_STATUSES: CampaignStatus[] = ["open", "funded", "claimed", "failed"];
+const CONTRACT_AMOUNT_DECIMALS = Number(process.env.CONTRACT_AMOUNT_DECIMALS ?? 2);
+
 
 app.use(
   cors({
@@ -65,12 +58,29 @@ app.use(
 
 app.use(express.json());
 
-app.use((req: Request & { requestId?: string }, _res: Response, next: express.NextFunction) => {
+app.use((req: RequestWithId, res: Response, next: express.NextFunction) => {
   req.requestId = randomUUID();
+  const startedAt = process.hrtime.bigint();
+
+  res.on("finish", () => {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+
+    logRequest(
+      {
+        requestId: req.requestId,
+        method: req.method,
+        path: req.originalUrl || req.path,
+        status: res.statusCode,
+        durationMs,
+      },
+      config.logLevel,
+    );
+  });
+
   next();
 });
 
-function sendValidationError(issues: z.ZodIssue[]) {
+function sendValidationError(issues: z.ZodIssue[]): never {
   throw new AppError(
     zodIssuesToErrorMessage(issues),
     400,
@@ -121,9 +131,7 @@ export function normalizeAssetFilter(assetRaw: unknown): string | undefined {
   return config.allowedAssets.includes(asset) ? asset : undefined;
 }
 
-export function normalizeStatusFilter(
-  statusRaw: unknown,
-): CampaignStatus | undefined {
+export function normalizeStatusFilter(statusRaw: unknown): CampaignStatus | undefined {
   const status = normalizeQueryValue(statusRaw)?.toLowerCase();
   if (!status) {
     return undefined;
@@ -158,10 +166,8 @@ export function filterCampaignList(
   },
 ): CampaignListItem[] {
   return campaigns.filter((campaign) => {
-    const matchesAsset =
-      !filters.asset || campaign.assetCode.toUpperCase() === filters.asset;
-    const matchesStatus =
-      !filters.status || campaign.progress.status === filters.status;
+    const matchesAsset = !filters.asset || campaign.assetCode.toUpperCase() === filters.asset;
+    const matchesStatus = !filters.status || campaign.progress.status === filters.status;
 
     return matchesAsset && matchesStatus;
   });
@@ -181,41 +187,35 @@ app.get("/api/health", (_req: Request, res: Response) => {
 });
 
 app.get("/api/campaigns", (req: Request, res: Response) => {
-  const searchQuery = normalizeQueryValue(req.query.q);
+  const paginationResult = paginationSchema.safeParse({
+    page: req.query.page,
+    limit: req.query.limit,
+  });
+  if (!paginationResult.success) {
+    sendValidationError(paginationResult.error.issues);
+  }
+
   const filters = parseCampaignListFilters({
     asset: req.query.asset,
     status: req.query.status,
+    q: req.query.q,
   });
+  const { page, limit } = paginationResult.data;
+  const { campaigns, totalCount } = listCampaigns({
+    searchQuery: filters.searchQuery,
+    assetCode: filters.asset,
+    status: filters.status,
+    page,
+    limit,
+  });
+
   const data = filterCampaignList(
-    listCampaigns({ searchQuery }).map((campaign) => ({
+    campaigns.map((campaign) => ({
       ...campaign,
       progress: calculateProgress(campaign),
     })),
     filters,
   );
-
-  // Attach progress
-  let data: CampaignListItem[] = campaigns.map((campaign) => ({
-    ...campaign,
-    progress: calculateProgress(campaign),
-  }));
-
-  // Apply status filter (server-side)
-  if (status) {
-    data = data.filter((c) => c.progress.status === status);
-  }
-
-  const { campaigns, totalCount } = listCampaigns({
-    ...filters,
-    assetCode: filters.asset,
-    page,
-    limit,
-  });
-
-  const data: CampaignListItem[] = campaigns.map((campaign) => ({
-    ...campaign,
-    progress: calculateProgress(campaign),
-  }));
 
   res.json({
     data,
@@ -232,7 +232,6 @@ app.get("/api/campaigns/:id", (req: Request, res: Response) => {
   const parsedId = parseCampaignId(req.params.id);
   if (!parsedId.ok) {
     sendValidationError(parsedId.issues);
-    return;
   }
 
   const campaign = getCampaignWithProgress(parsedId.value);
@@ -247,53 +246,40 @@ app.post("/api/campaigns", (req: Request, res: Response) => {
   const parsedBody = createCampaignPayloadSchema.safeParse(req.body);
   if (!parsedBody.success) {
     sendValidationError(parsedBody.error.issues);
-    return;
   }
 
   if (parsedBody.data.deadline <= Math.floor(Date.now() / 1000)) {
-    throw new AppError(
-      "deadline must be in the future.",
-      400,
-      "INVALID_DEADLINE",
-    );
+    throw new AppError("deadline must be in the future.", 400, "INVALID_DEADLINE");
   }
 
   const campaign = createCampaign(parsedBody.data);
-  res
-    .status(201)
-    .json({ data: { ...campaign, progress: calculateProgress(campaign) } });
+  res.status(201).json({ data: { ...campaign, progress: calculateProgress(campaign) } });
 });
 
 app.post("/api/campaigns/:id/pledges", (req: Request, res: Response) => {
   const parsedId = parseCampaignId(req.params.id);
   if (!parsedId.ok) {
     sendValidationError(parsedId.issues);
-    return;
   }
 
   const parsedBody = createPledgePayloadSchema.safeParse(req.body);
   if (!parsedBody.success) {
     sendValidationError(parsedBody.error.issues);
-    return;
   }
 
   const campaign = addPledge(parsedId.value, parsedBody.data);
-  res
-    .status(201)
-    .json({ data: { ...campaign, progress: calculateProgress(campaign) } });
+  res.status(201).json({ data: { ...campaign, progress: calculateProgress(campaign) } });
 });
 
 app.post("/api/campaigns/:id/pledges/reconcile", (req: Request, res: Response) => {
   const parsedId = parseCampaignId(req.params.id);
   if (!parsedId.ok) {
     sendValidationError(parsedId.issues);
-    return;
   }
 
   const parsedBody = reconcilePledgePayloadSchema.safeParse(req.body);
   if (!parsedBody.success) {
     sendValidationError(parsedBody.error.issues);
-    return;
   }
 
   const campaign = reconcileOnChainPledge(parsedId.value, parsedBody.data);
@@ -309,13 +295,11 @@ app.post("/api/campaigns/:id/claim", (req: Request, res: Response) => {
   const parsedId = parseCampaignId(req.params.id);
   if (!parsedId.ok) {
     sendValidationError(parsedId.issues);
-    return;
   }
 
   const parsedBody = claimCampaignPayloadSchema.safeParse(req.body);
   if (!parsedBody.success) {
     sendValidationError(parsedBody.error.issues);
-    return;
   }
 
   const campaign = claimCampaign(parsedId.value, {
@@ -330,30 +314,23 @@ app.post("/api/campaigns/:id/refund", async (req: Request, res: Response) => {
   const parsedId = parseCampaignId(req.params.id);
   if (!parsedId.ok) {
     sendValidationError(parsedId.issues);
-    return;
   }
 
   const parsedBody = refundPayloadSchema.safeParse(req.body);
   if (!parsedBody.success) {
     sendValidationError(parsedBody.error.issues);
-    return;
   }
 
   ensureSorobanRefundConfig();
   const verified = await verifyRefundTransaction(parsedBody.data.soroban.txHash);
-
-  const result = refundContributor(
-    parsedId.value,
-    parsedBody.data.contributor,
-    {
-      ...parsedBody.data.soroban,
-      txHash: verified.txHash,
-      ledger: verified.ledger ?? parsedBody.data.soroban.ledger,
-      createdAt: verified.createdAt ?? parsedBody.data.soroban.createdAt,
-      latestLedger: verified.latestLedger ?? parsedBody.data.soroban.latestLedger,
-      source: "soroban-contract",
-    },
-  );
+  const result = refundContributor(parsedId.value, parsedBody.data.contributor, {
+    ...parsedBody.data.soroban,
+    txHash: verified.txHash,
+    ledger: verified.ledger ?? parsedBody.data.soroban.ledger,
+    createdAt: verified.createdAt ?? parsedBody.data.soroban.createdAt,
+    latestLedger: verified.latestLedger ?? parsedBody.data.soroban.latestLedger,
+    source: "soroban-contract",
+  });
 
   res.json({
     data: {
@@ -368,7 +345,6 @@ app.get("/api/campaigns/:id/history", (req: Request, res: Response) => {
   const parsedId = parseCampaignId(req.params.id);
   if (!parsedId.ok) {
     sendValidationError(parsedId.issues);
-    return;
   }
 
   const campaign = getCampaign(parsedId.value);
@@ -389,11 +365,16 @@ app.get("/api/config", (_req: Request, res: Response) => {
     data: {
       allowedAssets: config.allowedAssets,
       soroban: {
-        enabled: Boolean(config.contractId),
+        enabled: walletIntegrationReady,
         contractId: config.contractId || undefined,
         networkPassphrase: config.sorobanNetworkPassphrase,
         rpcUrl: config.sorobanRpcUrl,
       },
+      sorobanRpcUrl: config.sorobanRpcUrl,
+      contractId: config.contractId,
+      networkPassphrase: config.sorobanNetworkPassphrase,
+      contractAmountDecimals: CONTRACT_AMOUNT_DECIMALS,
+      walletIntegrationReady,
     },
   });
 });
@@ -417,25 +398,44 @@ app.use((err: any, req: Request, res: Response, _next: express.NextFunction) => 
     error: {
       code,
       message: err.message || "An unexpected error occurred",
-      requestId: (req as any).requestId,
+      requestId: (req as RequestWithId).requestId,
     },
   };
 
-    if (err instanceof AppError && err.details) {
-      response.error.details = err.details;
-    } else if (err.details) {
-      response.error.details = err.details;
-    }
+  if (err instanceof AppError && err.details) {
+    response.error.details = err.details;
+  } else if (err.details) {
+    response.error.details = err.details;
+  }
 
-    res.status(statusCode).json(response);
-  },
-);
+  logError(
+    err,
+    {
+      event: "request_error",
+      requestId: (req as RequestWithId).requestId,
+      method: req.method,
+      path: req.originalUrl || req.path,
+      status: statusCode,
+      code,
+    },
+    config.logLevel,
+  );
+
+  res.status(statusCode).json(response);
+});
 
 function startServer() {
   initCampaignStore();
   startEventIndexer();
-  app.listen(port, () => {
-    console.log(`Stellar Goal Vault API listening on http://localhost:${port}`);
+  app.listen(config.port, () => {
+    logInfo(
+      "server_started",
+      {
+        message: `Stellar Goal Vault API listening on http://localhost:${config.port}`,
+        port: config.port,
+      },
+      config.logLevel,
+    );
   });
 }
 
